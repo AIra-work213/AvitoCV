@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recreate the final per-model multi-crop cache for wide Yandex text lines."""
+"""Сохраняет multi-crop признаки моделей на валидационной выборке Яндекса."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ import pandas as pd
 from paddlex import create_model
 from rapidocr_onnxruntime import RapidOCR
 
-
 POSITIONS = ("left", "center", "right")
 REQUIRED_MODEL_FILES = ("inference.yml", "inference.json", "inference.pdiparams")
 
 
 def parse_args() -> argparse.Namespace:
+    """Читает пути и параметры построения multi-crop кеша."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--labels",
@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def crop_at(image: np.ndarray, target_ratio: float, position: str) -> np.ndarray:
+    """Вырезает окно заданной ширины слева, по центру или справа."""
     height, width = image.shape[:2]
     crop_width = min(width, max(1, round(height * target_ratio)))
     if position == "left":
@@ -64,23 +65,32 @@ def crop_at(image: np.ndarray, target_ratio: float, position: str) -> np.ndarray
 
 
 def paddle_probability(result: object) -> float:
+    """Преобразует ответ PaddleX в вероятность поворота на 180 градусов."""
     payload = result.json["res"]
     score = float(payload["scores"][0])
     return score if payload["label_names"][0] == "180_degree" else 1.0 - score
 
 
 def paddle_tta(model: object, images: list[np.ndarray], batch_size: int) -> np.ndarray:
+    """Усредняет предсказания PaddleX для двух поворотов изображения."""
     direct = np.asarray(
-        [paddle_probability(result) for result in model.predict(images, batch_size=batch_size)]
+        [
+            paddle_probability(result)
+            for result in model.predict(images, batch_size=batch_size)
+        ]
     )
     rotated = [cv2.rotate(image, cv2.ROTATE_180) for image in images]
     flipped = np.asarray(
-        [paddle_probability(result) for result in model.predict(rotated, batch_size=batch_size)]
+        [
+            paddle_probability(result)
+            for result in model.predict(rotated, batch_size=batch_size)
+        ]
     )
     return 0.5 * (direct + 1.0 - flipped)
 
 
 def rapid_probabilities(engine: RapidOCR, images: list[np.ndarray]) -> np.ndarray:
+    """Получает вероятности ориентации от RapidOCR."""
     result = engine.text_cls(images)
     if isinstance(result, tuple):
         result = result[1] if len(result) == 3 else result[0]
@@ -93,7 +103,10 @@ def rapid_probabilities(engine: RapidOCR, images: list[np.ndarray]) -> np.ndarra
 
 
 def load_orientation_model(model_name: str, model_dir: Path) -> object:
-    if model_dir.is_dir() and all((model_dir / name).is_file() for name in REQUIRED_MODEL_FILES):
+    """Загружает локальную модель ориентации или модель из кеша PaddleX."""
+    if model_dir.is_dir() and all(
+        ((model_dir / name).is_file() for name in REQUIRED_MODEL_FILES)
+    ):
         print(f"Используется локальная модель: {model_dir}", flush=True)
         return create_model(model_name, model_dir=str(model_dir), device="cpu")
     print(f"PaddleX автоматически скачает модель {model_name}", flush=True)
@@ -101,6 +114,7 @@ def load_orientation_model(model_name: str, model_dir: Path) -> object:
 
 
 def main() -> None:
+    """Считает признаки трёх моделей для окон широких строк."""
     args = parse_args()
     labels = pd.read_csv(args.labels)
     labels["ratio"] = labels["output_ratio"]
@@ -109,20 +123,17 @@ def main() -> None:
         [baseline_frame.loc[image_id, "p_final"] for image_id in labels.image_id],
         dtype=float,
     )
-
     wide = np.flatnonzero(labels.ratio.to_numpy(float) >= args.threshold_ratio)
     image_paths = [Path(path) for path in labels.image_path]
     images = [cv2.imread(str(image_paths[index])) for index in wide]
-    unreadable = [str(image_paths[index]) for index, image in zip(wide, images) if image is None]
+    unreadable = [
+        str(image_paths[index]) for index, image in zip(wide, images) if image is None
+    ]
     if unreadable:
         raise RuntimeError(f"Не удалось прочитать изображения: {unreadable[:5]}")
-
-    x025 = load_orientation_model(
-        "PP-LCNet_x0_25_textline_ori", args.x025_model_dir
-    )
+    x025 = load_orientation_model("PP-LCNet_x0_25_textline_ori", args.x025_model_dir)
     x1 = load_orientation_model("PP-LCNet_x1_0_textline_ori", args.x1_model_dir)
     rapid = RapidOCR()
-
     rows: dict[str, object] = {
         "image_id": labels.image_id.iloc[wide].to_numpy(),
         "target": labels.target.iloc[wide].to_numpy(int),
@@ -135,7 +146,6 @@ def main() -> None:
         rows[f"x025_{position}"] = paddle_tta(x025, paddle_crops, args.batch_size)
         rows[f"x1_{position}"] = paddle_tta(x1, paddle_crops, args.batch_size)
         rows[f"rapid_{position}"] = rapid_probabilities(rapid, rapid_crops)
-
     args.output.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(args.output, index=False)
     print(f"Сохранено {len(wide)} строк: {args.output}")

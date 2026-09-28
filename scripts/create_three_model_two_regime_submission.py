@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild the exact three-model, two-regime orientation submission.
-
-The output is the base orientation feature consumed by
-``create_submission_ocr_v5_meta.py``.  All intermediate model predictions are
-recomputed from the test images; no historical submission files are required.
-"""
+"""Собирает базовый сабмит из трёх моделей и двух режимов обработки."""
 
 from __future__ import annotations
 
@@ -14,7 +9,6 @@ import os
 from pathlib import Path
 
 os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(Path(".paddlex-cache").resolve()))
-
 import cv2
 import numpy as np
 import pandas as pd
@@ -22,12 +16,12 @@ from paddlex import create_model
 from rapidocr_onnxruntime import RapidOCR
 from tqdm import tqdm
 
-
 POSITIONS = ("left", "center", "right")
 VALID_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff", ".webp"}
 
 
 def parse_args() -> argparse.Namespace:
+    """Читает пути, размер пакета и необязательные пути к готовым кешам."""
     parser = argparse.ArgumentParser(
         description="Создать базовый two-regime сабмит из исходных изображений"
     )
@@ -67,6 +61,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_ids(path: Path) -> list[str]:
+    """Читает уникальные идентификаторы в порядке sample submission."""
     with path.open(newline="", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         if reader.fieldnames != ["image_id", "p_180"]:
@@ -78,6 +73,7 @@ def read_ids(path: Path) -> list[str]:
 
 
 def index_images(directory: Path) -> dict[str, Path]:
+    """Строит индекс поддерживаемых изображений по имени без расширения."""
     result: dict[str, Path] = {}
     for path in directory.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in VALID_EXTENSIONS:
@@ -89,8 +85,11 @@ def index_images(directory: Path) -> dict[str, Path]:
 
 
 def create_orientation_model(name: str, directory: Path) -> object:
+    """Загружает локальную модель ориентации или разрешает PaddleX скачать её."""
     required = ("inference.yml", "inference.json", "inference.pdiparams")
-    if directory.is_dir() and all((directory / filename).is_file() for filename in required):
+    if directory.is_dir() and all(
+        ((directory / filename).is_file() for filename in required)
+    ):
         print(f"Используется локальная модель: {directory}", flush=True)
         return create_model(name, model_dir=str(directory), device="cpu")
     print(f"PaddleX загрузит отсутствующую модель {name}", flush=True)
@@ -98,19 +97,29 @@ def create_orientation_model(name: str, directory: Path) -> object:
 
 
 def paddle_probability(result: object) -> float:
+    """Преобразует ответ PaddleX в вероятность поворота на 180 градусов."""
     payload = result.json["res"]
     score = float(payload["scores"][0])
     return score if payload["label_names"][0] == "180_degree" else 1.0 - score
 
 
-def paddle_tta(model: object, images: list[np.ndarray], batch_size: int = 32) -> np.ndarray:
+def paddle_tta(
+    model: object, images: list[np.ndarray], batch_size: int = 32
+) -> np.ndarray:
+    """Усредняет предсказания исходного и повёрнутого изображения."""
     direct = np.asarray(
-        [paddle_probability(result) for result in model.predict(images, batch_size=batch_size)],
+        [
+            paddle_probability(result)
+            for result in model.predict(images, batch_size=batch_size)
+        ],
         dtype=np.float64,
     )
     rotated = [cv2.rotate(image, cv2.ROTATE_180) for image in images]
     flipped = np.asarray(
-        [paddle_probability(result) for result in model.predict(rotated, batch_size=batch_size)],
+        [
+            paddle_probability(result)
+            for result in model.predict(rotated, batch_size=batch_size)
+        ],
         dtype=np.float64,
     )
     return 0.5 * (direct + 1.0 - flipped)
@@ -119,22 +128,28 @@ def paddle_tta(model: object, images: list[np.ndarray], batch_size: int = 32) ->
 def paddle_path_tta(
     model: object, paths: list[Path], batch_size: int, description: str
 ) -> np.ndarray:
+    """Считает flip-TTA PaddleX пакетами для списка путей."""
     output: list[np.ndarray] = []
     for start in tqdm(range(0, len(paths), batch_size), desc=description):
         batch = paths[start : start + batch_size]
         direct = np.asarray(
             [
                 paddle_probability(result)
-                for result in model.predict([str(path) for path in batch], batch_size=batch_size)
+                for result in model.predict(
+                    [str(path) for path in batch], batch_size=batch_size
+                )
             ],
             dtype=np.float64,
         )
         images = [cv2.imread(str(path)) for path in batch]
-        if any(image is None for image in images):
+        if any((image is None for image in images)):
             raise RuntimeError("Не удалось прочитать одно из тестовых изображений")
         rotated = [cv2.rotate(image, cv2.ROTATE_180) for image in images]
         flipped = np.asarray(
-            [paddle_probability(result) for result in model.predict(rotated, batch_size=batch_size)],
+            [
+                paddle_probability(result)
+                for result in model.predict(rotated, batch_size=batch_size)
+            ],
             dtype=np.float64,
         )
         output.append(0.5 * (direct + 1.0 - flipped))
@@ -142,6 +157,7 @@ def paddle_path_tta(
 
 
 def parse_rapid(result: object) -> object:
+    """Извлекает классификацию ориентации из разных форматов ответа RapidOCR."""
     if isinstance(result, tuple):
         if len(result) == 3:
             return result[1]
@@ -152,26 +168,33 @@ def parse_rapid(result: object) -> object:
 
 
 def rapid_probabilities(engine: RapidOCR, images: list[np.ndarray]) -> np.ndarray:
+    """Преобразует ответы RapidOCR в вероятности поворота на 180 градусов."""
     result = parse_rapid(engine.text_cls(images))
     return np.asarray(
-        [float(score) if label == "180" else 1.0 - float(score) for label, score in result],
+        [
+            float(score) if label == "180" else 1.0 - float(score)
+            for label, score in result
+        ],
         dtype=np.float64,
     )
 
 
 def temperature(probabilities: np.ndarray, value: float) -> np.ndarray:
+    """Применяет температурное масштабирование вероятностей в логитах."""
     clipped = np.clip(probabilities, 1e-12, 1.0 - 1e-12)
     logits = np.log(clipped / (1.0 - clipped))
     return 1.0 / (1.0 + np.exp(-np.clip(logits / value, -700.0, 700.0)))
 
 
 def inverse_temperature(probabilities: np.ndarray, value: float) -> np.ndarray:
+    """Отменяет температурное масштабирование вероятностей."""
     clipped = np.clip(probabilities, 1e-12, 1.0 - 1e-12)
     logits = value * np.log(clipped / (1.0 - clipped))
     return 1.0 / (1.0 + np.exp(-np.clip(logits, -700.0, 700.0)))
 
 
 def crop_at(image: np.ndarray, target_ratio: float, position: str) -> np.ndarray:
+    """Вырезает левое, центральное или правое окно заданного отношения сторон."""
     height, width = image.shape[:2]
     crop_width = min(width, max(1, round(height * target_ratio)))
     if position == "left":
@@ -186,13 +209,18 @@ def crop_at(image: np.ndarray, target_ratio: float, position: str) -> np.ndarray
 
 
 def load_x025_cache(path: Path, ids: list[str]) -> np.ndarray:
+    """Читает кеш PP-LCNet x0.25 и проверяет порядок изображений."""
     frame = pd.read_csv(path)
-    if frame.columns.tolist() != ["image_id", "p_180"] or frame.image_id.tolist() != ids:
+    if (
+        frame.columns.tolist() != ["image_id", "p_180"]
+        or frame.image_id.tolist() != ids
+    ):
         raise ValueError(f"Кеш {path} не соответствует sample_submission.csv")
     return frame.p_180.to_numpy(dtype=np.float64)
 
 
 def load_rapid_cache(path: Path, ids: list[str]) -> np.ndarray:
+    """Читает кеш RapidOCR и возвращает вероятности в порядке теста."""
     import json
 
     rows = json.loads(path.read_text(encoding="utf-8"))
@@ -212,41 +240,36 @@ def full_image_predictions(
     x025_cache: Path | None,
     rapid_cache: Path | None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Получает предсказания трёх моделей на целых изображениях."""
     if x025_cache:
         x025 = load_x025_cache(x025_cache, ids)
     else:
         x025_raw = paddle_path_tta(x025_model, paths, batch_size, "PP-LCNet x0.25")
-        # The historical x0.25 cache was written with ten decimal places.
         x025 = np.asarray([float(f"{value:.10f}") for value in x025_raw])
-
     x1 = paddle_path_tta(x1_model, paths, batch_size, "PP-LCNet x1.0")
-
     if rapid_cache:
         rapid = load_rapid_cache(rapid_cache, ids)
     else:
         values: list[float] = []
         for start in tqdm(range(0, len(paths), 32), desc="RapidOCR"):
             images = [cv2.imread(str(path)) for path in paths[start : start + 32]]
-            if any(image is None for image in images):
+            if any((image is None for image in images)):
                 raise RuntimeError("Не удалось прочитать одно из тестовых изображений")
             values.extend(rapid_probabilities(rapid_model, images).tolist())
-        # orientation_results.json stored six-decimal probabilities.
         rapid = np.asarray([round(value, 6) for value in values], dtype=np.float64)
-    return x025, x1, rapid
+    return (x025, x1, rapid)
 
 
 def historical_regular_probability(
     x025: np.ndarray, x1: np.ndarray, rapid: np.ndarray
 ) -> np.ndarray:
-    # The selected regular regime was reconstructed from the ten-decimal CSV of
-    # the preceding ensemble.  Repeating that quantization preserves its bytes.
-    old = 0.125 * x025 + 0.750 * temperature(x1, 0.05) + 0.125 * rapid
+    """Воспроизводит обычный режим ансамбля с исходным округлением кешей."""
+    old = 0.125 * x025 + 0.75 * temperature(x1, 0.05) + 0.125 * rapid
     old = np.asarray([float(f"{value:.10f}") for value in old])
-    x1_t005 = (old - 0.125 * x025 - 0.125 * rapid) / 0.750
+    x1_t005 = (old - 0.125 * x025 - 0.125 * rapid) / 0.75
     recovered_x1 = inverse_temperature(np.clip(x1_t005, 0.0, 1.0), 0.05)
     return temperature(
-        0.20 * x025 + 0.55 * temperature(recovered_x1, 0.02) + 0.25 * rapid,
-        0.5,
+        0.2 * x025 + 0.55 * temperature(recovered_x1, 0.02) + 0.25 * rapid, 0.5
     )
 
 
@@ -258,6 +281,7 @@ def multicrop_probability(
     batch_size: int,
     label: str,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Считает ансамбль по трём окнам для очень широкого изображения."""
     indices = np.asarray([index for index, _ in items], dtype=int)
     windows: list[np.ndarray] = []
     for position in POSITIONS:
@@ -271,33 +295,31 @@ def multicrop_probability(
             p025 = paddle_tta(x025_model, pp, batch_size=32)
             p1 = paddle_tta(x1_model, pp, batch_size=32)
             rapid = rapid_probabilities(rapid_model, rr)
-            values.append(
-                0.05 * p025 + 0.65 * temperature(p1, 0.02) + 0.30 * rapid
-            )
+            values.append(0.05 * p025 + 0.65 * temperature(p1, 0.02) + 0.3 * rapid)
         windows.append(np.concatenate(values))
     probability = temperature(np.mean(np.stack(windows, axis=1), axis=1), 0.5)
-    return indices, probability
+    return (indices, probability)
 
 
 def main() -> None:
+    """Собирает двухрежимный ансамбль и записывает базовый сабмит."""
     args = parse_args()
     if args.batch_size != 32:
         raise ValueError("Для побайтового воспроизведения требуется --batch-size 32")
-
     ids = read_ids(args.sample_submission)
     image_by_id = index_images(args.images)
     if set(image_by_id) != set(ids):
         missing = len(set(ids) - set(image_by_id))
         extra = len(set(image_by_id) - set(ids))
-        raise ValueError(f"Изображения не совпадают с шаблоном: missing={missing}, extra={extra}")
+        raise ValueError(
+            f"Изображения не совпадают с шаблоном: missing={missing}, extra={extra}"
+        )
     paths = [image_by_id[image_id] for image_id in ids]
-
     x025_model = create_orientation_model(
         "PP-LCNet_x0_25_textline_ori", args.x025_model_dir
     )
     x1_model = create_orientation_model("PP-LCNet_x1_0_textline_ori", args.x1_model_dir)
     rapid_model = RapidOCR()
-
     x025, x1, rapid = full_image_predictions(
         ids,
         paths,
@@ -309,7 +331,6 @@ def main() -> None:
         args.rapid_cache,
     )
     final = historical_regular_probability(x025, x1, rapid)
-
     ratio_gt_10: list[tuple[int, np.ndarray]] = []
     ratio_eq_10: list[tuple[int, np.ndarray]] = []
     for index, path in enumerate(tqdm(paths, desc="Чтение размеров")):
@@ -321,22 +342,18 @@ def main() -> None:
             ratio_gt_10.append((index, image))
         elif ratio == 10.0:
             ratio_eq_10.append((index, image))
-
-    # These subsets were historically inferred in separate runs.
     for label, items in (("ratio > 10", ratio_gt_10), ("ratio = 10", ratio_eq_10)):
         indices, probability = multicrop_probability(
             items, x025_model, x1_model, rapid_model, args.batch_size, label
         )
         final[indices] = probability
-
-    if len(ids) != 20_000 or len(ratio_gt_10) != 2_806 or len(ratio_eq_10) != 16:
+    if len(ids) != 20000 or len(ratio_gt_10) != 2806 or len(ratio_eq_10) != 16:
         raise RuntimeError(
-            "Неожиданный состав теста: "
-            f"rows={len(ids)}, ratio>10={len(ratio_gt_10)}, ratio=10={len(ratio_eq_10)}"
+            f"Неожиданный состав теста: rows={len(ids)}, "
+            f"ratio>10={len(ratio_gt_10)}, ratio=10={len(ratio_eq_10)}"
         )
     if not np.all(np.isfinite(final)) or np.any((final < 0.0) | (final > 1.0)):
         raise RuntimeError("Получены некорректные вероятности")
-
     args.output.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({"image_id": ids, "p_180": final}).to_csv(
         args.output, index=False, float_format="%.10f"

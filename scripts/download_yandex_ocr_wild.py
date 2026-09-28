@@ -1,4 +1,5 @@
-"""Download Yandex's Russian OCR-in-the-wild benchmark from its original commit."""
+#!/usr/bin/env python3
+"""Скачивает и проверяет исходные файлы открытого OCR-датасета Яндекса."""
 
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-
 REPOSITORY = "yandex-cloud/ocr"
 COMMIT = "6abc7e2c74aa4c9175236e3de14f15fd9785064b"
 PREFIX = "ocr_comparison/rus_ocr_in_the_wild_dataset/"
@@ -20,10 +20,10 @@ RAW_ROOT = f"https://raw.githubusercontent.com/{REPOSITORY}/{COMMIT}/"
 
 
 def parse_args() -> argparse.Namespace:
+    """Читает каталог назначения и параметры повторных попыток скачивания."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output", type=Path,
-        default=Path("data/train/rus_ocr_in_the_wild_dataset"),
+        "--output", type=Path, default=Path("data/train/rus_ocr_in_the_wild_dataset")
     )
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--retries", type=int, default=5)
@@ -31,44 +31,48 @@ def parse_args() -> argparse.Namespace:
 
 
 def fetch_json(url: str) -> dict:
+    """Получает JSON через HTTP с заданным заголовком User-Agent."""
     request = urllib.request.Request(
-        url,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "avito-cv"},
+        url, headers={"Accept": "application/vnd.github+json", "User-Agent": "avito-cv"}
     )
     with urllib.request.urlopen(request, timeout=120) as response:
         return json.load(response)
 
 
 def git_blob_sha(data: bytes) -> str:
-    header = f"blob {len(data)}\0".encode()
+    """Вычисляет Git blob SHA-1 для проверки скачанного файла."""
+    header = f"blob {len(data)}\x00".encode()
     return hashlib.sha1(header + data).hexdigest()
 
 
 def main() -> None:
+    """Скачивает файлы датасета, проверяет хеши и сохраняет манифест."""
     args = parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-
     tree = fetch_json(TREE_URL)
     files = [
-        item for item in tree["tree"]
+        item
+        for item in tree["tree"]
         if item["type"] == "blob" and item["path"].startswith(PREFIX)
     ]
     if len(files) != 594:
         raise RuntimeError(f"Expected 594 files, found {len(files)}")
 
     def download(item: dict) -> tuple[str, int, bool]:
-        relative = item["path"][len(PREFIX):]
+        """Скачивает один файл с повторными попытками и атомарной заменой."""
+        relative = item["path"][len(PREFIX) :]
         destination = args.output / relative
         if destination.is_file():
             data = destination.read_bytes()
             if git_blob_sha(data) == item["sha"]:
-                return relative, len(data), True
-
+                return (relative, len(data), True)
         url = RAW_ROOT + urllib.parse.quote(item["path"])
         last_error: Exception | None = None
         for attempt in range(args.retries):
             try:
-                request = urllib.request.Request(url, headers={"User-Agent": "avito-cv"})
+                request = urllib.request.Request(
+                    url, headers={"User-Agent": "avito-cv"}
+                )
                 with urllib.request.urlopen(request, timeout=180) as response:
                     data = response.read()
                 if git_blob_sha(data) != item["sha"]:
@@ -76,10 +80,10 @@ def main() -> None:
                 temporary = destination.with_suffix(destination.suffix + ".part")
                 temporary.write_bytes(data)
                 temporary.replace(destination)
-                return relative, len(data), False
+                return (relative, len(data), False)
             except Exception as error:
                 last_error = error
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
         raise RuntimeError(f"Failed to download {relative}") from last_error
 
     total_bytes = 0
@@ -93,17 +97,16 @@ def main() -> None:
             if index % 20 == 0 or index == len(files):
                 print(
                     f"Verified {index}/{len(files)} files; "
-                    f"{total_bytes / 1e6:.1f} MB; reused {reused}",
+                    f"{total_bytes / 1000000.0:.1f} MB; reused {reused}",
                     flush=True,
                 )
-
     manifest = {
         "repository": f"https://github.com/{REPOSITORY}",
         "commit": COMMIT,
         "source_directory": PREFIX.rstrip("/"),
         "files": [
             {
-                "path": item["path"][len(PREFIX):],
+                "path": item["path"][len(PREFIX) :],
                 "size": item["size"],
                 "git_blob_sha1": item["sha"],
             }
@@ -113,7 +116,7 @@ def main() -> None:
     (args.output / "source_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"Complete: {len(files)} source files, {total_bytes / 1e6:.1f} MB")
+    print(f"Complete: {len(files)} source files, {total_bytes / 1000000.0:.1f} MB")
 
 
 if __name__ == "__main__":
