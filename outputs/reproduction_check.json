@@ -1,0 +1,21 @@
+{
+  "status": "ok",
+  "opencv": "5.0.0",
+  "yandex_image_set_sha256": "dc1cdaa3b4e97cdf5bf396faafb9c115b2676642e603ef29c52692e0e62bc636",
+  "files": {
+    "data/train/rus_ocr_in_the_wild_dataset/source_manifest.json": "bd3b12f1095a2cff7e4227350ba250dc65374ea846d050aeab94b6125c3939a7",
+    "data/train/yandex_ocr_real_long_lines_v4/labels.csv": "aeadb9465297e359afe436c77091b47b2184b82ecf4912a8060f554bc9476fb6",
+    "data/train/yandex_ocr_real_long_lines_v4/summary.json": "2d3cbd689cb2c3cc23f64016f3ec9a5f1ccf1f2f84014a8ec2d6578af42ef48b",
+    "data/train/yandex_ocr_real_long_lines_v4/contact_sheet.jpg": "ea57e5eafcdd936a31d6d1cb2359f5b749c305716f4b70e7964fd0ddba009ca1",
+    "outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv": "76f629d5880146fcf543d49f3937b29b23943b4937b5a23ddce7dac574a968dc",
+    "outputs/yandex_real_long_v4_multicrop_raw.csv": "f54593539769d48cfa3bfcf2bff5e7a5583e71940d9f19daf6ac234fe2f8a997",
+    "outputs/yandex_cyrillic_v5_rec_predictions.csv": "95e44cd20877e8f22aac3338bb325b0642d1bd3dd84091ccc4f461fc1e6c59aa",
+    "outputs/yandex_eslav_v5_rec_predictions.csv": "6970aeb597757db28f360bcba1b7a71c845b4e840e11de46b89b1300a814d968",
+    "outputs/yandex_english_v5_rec_predictions.csv": "f90627b9d12474736353ec37cca0a6b13ee3fb611e5849504ed004f51b3759a4",
+    "submission_three_model_two_regime_tuned.csv": "fdcb10ab338a74fd28df7e6809e7e1f21aa85cd23a449df0449a40e11e69dfba",
+    "outputs/test_cyrillic_v5_rec_predictions_b8.csv": "4de3f63e77eccd5fe5abeb8f5f6469986e654fe30fe4b42f9098fc96408905b1",
+    "outputs/test_eslav_v5_rec_predictions_b8.csv": "2390432d09f9e747114a7a93ed1d17893bfd6b8310f8c3a9762092eb6601925b",
+    "outputs/test_english_v5_rec_predictions_b8.csv": "242d0063a8e4b72b7f8d9e612bd7d0fa8505bbd42b48f11be5fc5418fc5d358c",
+    "submission_ocr_v5_meta_yandex_selected_b8.csv": "9580d7080b3e19c0b3e01e80e2c291743739caa2964a6dd049bbb9cc99226ffd"
+  }
+}

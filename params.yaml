@@ -1,0 +1,11 @@
+seed:
+  yandex_validation: 20260926
+batch_size:
+  yandex_orientation: 32
+  yandex_multicrop: 32
+  yandex_ocr: 32
+  test_orientation: 32
+  test_ocr: 8
+yandex_validation:
+  samples: 553
+  multicrop_ratio: 10

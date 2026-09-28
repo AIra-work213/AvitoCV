@@ -1,0 +1,16 @@
+{
+  "seed": 20260927,
+  "model_selection": "Yandex source-group OOF",
+  "meta_training_rows": 553,
+  "feature_variant": "russian_only",
+  "C": 0.3,
+  "temperature": 0.42,
+  "ocr_batch_size": 8,
+  "submission": {
+    "path": "submission_ocr_v5_meta_yandex_selected_b8.csv",
+    "rows": 20000,
+    "min": 3.7655696463467764e-09,
+    "max": 0.9999999929141696,
+    "mean": 0.5044109473710702
+  }
+}

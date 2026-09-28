@@ -1,0 +1,257 @@
+stages:
+  check_environment:
+    cmd: uv run python scripts/check_environment.py
+    deps:
+      - scripts/check_environment.py
+      - pyproject.toml
+      - uv.lock
+    outs:
+      - outputs/environment.json:
+          cache: false
+    always_changed: true
+
+  download_yandex:
+    cmd: >-
+      uv run python scripts/download_yandex_ocr_wild.py
+      --output data/train/rus_ocr_in_the_wild_dataset
+    deps:
+      - scripts/download_yandex_ocr_wild.py
+      - outputs/environment.json
+    outs:
+      - data/train/rus_ocr_in_the_wild_dataset:
+          cache: false
+
+  prepare_yandex_validation:
+    cmd: >-
+      uv run python scripts/prepare_yandex_ocr_real_lines_validation.py
+      --source data/train/rus_ocr_in_the_wild_dataset
+      --test-images data/test/test/images
+      --output data/train/yandex_ocr_real_long_lines_v4
+      --samples ${yandex_validation.samples}
+      --seed ${seed.yandex_validation}
+    deps:
+      - scripts/prepare_yandex_ocr_real_lines_validation.py
+      - scripts/prepare_yandex_ocr_realistic_validation.py
+      - data/train/rus_ocr_in_the_wild_dataset
+      - data/test/test/images
+      - outputs/environment.json
+    params:
+      - seed.yandex_validation
+      - yandex_validation.samples
+    outs:
+      - data/train/yandex_ocr_real_long_lines_v4:
+          cache: false
+
+  yandex_base_ensemble:
+    cmd: >-
+      uv run python scripts/evaluate_three_model_orientation.py
+      --labels data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      --output outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      --batch-size ${batch_size.yandex_orientation}
+    deps:
+      - scripts/evaluate_three_model_orientation.py
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/environment.json
+    params:
+      - batch_size.yandex_orientation
+    outs:
+      - outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv:
+          cache: false
+
+  yandex_multicrop:
+    cmd: >-
+      uv run python scripts/create_yandex_multicrop_cache.py
+      --labels data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      --baseline outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      --output outputs/yandex_real_long_v4_multicrop_raw.csv
+      --threshold-ratio ${yandex_validation.multicrop_ratio}
+      --batch-size ${batch_size.yandex_multicrop}
+    deps:
+      - scripts/create_yandex_multicrop_cache.py
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      - outputs/environment.json
+    params:
+      - batch_size.yandex_multicrop
+      - yandex_validation.multicrop_ratio
+    outs:
+      - outputs/yandex_real_long_v4_multicrop_raw.csv:
+          cache: false
+
+  yandex_ocr_cyrillic:
+    cmd: >-
+      uv run python scripts/evaluate_cyrillic_rec_orientation.py
+      --labels data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      --model-name cyrillic_PP-OCRv5_mobile_rec
+      --output outputs/yandex_cyrillic_v5_rec_predictions.csv
+      --batch-size ${batch_size.yandex_ocr}
+    deps:
+      - scripts/evaluate_cyrillic_rec_orientation.py
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/environment.json
+    params:
+      - batch_size.yandex_ocr
+    outs:
+      - outputs/yandex_cyrillic_v5_rec_predictions.csv:
+          cache: false
+
+  yandex_ocr_eslav:
+    cmd: >-
+      uv run python scripts/evaluate_cyrillic_rec_orientation.py
+      --labels data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      --model-name eslav_PP-OCRv5_mobile_rec
+      --output outputs/yandex_eslav_v5_rec_predictions.csv
+      --batch-size ${batch_size.yandex_ocr}
+    deps:
+      - scripts/evaluate_cyrillic_rec_orientation.py
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/environment.json
+    params:
+      - batch_size.yandex_ocr
+    outs:
+      - outputs/yandex_eslav_v5_rec_predictions.csv:
+          cache: false
+
+  yandex_ocr_english:
+    cmd: >-
+      uv run python scripts/evaluate_cyrillic_rec_orientation.py
+      --labels data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      --model-name en_PP-OCRv5_mobile_rec
+      --output outputs/yandex_english_v5_rec_predictions.csv
+      --batch-size ${batch_size.yandex_ocr}
+    deps:
+      - scripts/evaluate_cyrillic_rec_orientation.py
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/environment.json
+    params:
+      - batch_size.yandex_ocr
+    outs:
+      - outputs/yandex_english_v5_rec_predictions.csv:
+          cache: false
+
+  test_base_ensemble:
+    cmd: >-
+      uv run python scripts/create_three_model_two_regime_submission.py
+      --sample-submission data/test/sample_submission.csv
+      --images data/test/test/images
+      --output submission_three_model_two_regime_tuned.csv
+      --batch-size ${batch_size.test_orientation}
+    deps:
+      - scripts/create_three_model_two_regime_submission.py
+      - data/test/sample_submission.csv
+      - data/test/test/images
+      - outputs/environment.json
+    params:
+      - batch_size.test_orientation
+    outs:
+      - submission_three_model_two_regime_tuned.csv:
+          cache: false
+
+  test_ocr_cyrillic:
+    cmd: >-
+      uv run python scripts/cache_test_recognizer_orientation.py
+      --model-name cyrillic_PP-OCRv5_mobile_rec
+      --images data/test/test/images
+      --sample data/test/sample_submission.csv
+      --output outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      --batch-size ${batch_size.test_ocr}
+    deps:
+      - scripts/cache_test_recognizer_orientation.py
+      - data/test/sample_submission.csv
+      - data/test/test/images
+      - outputs/environment.json
+    params:
+      - batch_size.test_ocr
+    outs:
+      - outputs/test_cyrillic_v5_rec_predictions_b8.csv:
+          cache: false
+
+  test_ocr_eslav:
+    cmd: >-
+      uv run python scripts/cache_test_recognizer_orientation.py
+      --model-name eslav_PP-OCRv5_mobile_rec
+      --images data/test/test/images
+      --sample data/test/sample_submission.csv
+      --output outputs/test_eslav_v5_rec_predictions_b8.csv
+      --batch-size ${batch_size.test_ocr}
+    deps:
+      - scripts/cache_test_recognizer_orientation.py
+      - data/test/sample_submission.csv
+      - data/test/test/images
+      - outputs/environment.json
+    params:
+      - batch_size.test_ocr
+    outs:
+      - outputs/test_eslav_v5_rec_predictions_b8.csv:
+          cache: false
+
+  test_ocr_english:
+    cmd: >-
+      uv run python scripts/cache_test_recognizer_orientation.py
+      --model-name en_PP-OCRv5_mobile_rec
+      --images data/test/test/images
+      --sample data/test/sample_submission.csv
+      --output outputs/test_english_v5_rec_predictions_b8.csv
+      --batch-size ${batch_size.test_ocr}
+    deps:
+      - scripts/cache_test_recognizer_orientation.py
+      - data/test/sample_submission.csv
+      - data/test/test/images
+      - outputs/environment.json
+    params:
+      - batch_size.test_ocr
+    outs:
+      - outputs/test_english_v5_rec_predictions_b8.csv:
+          cache: false
+
+  final_submission:
+    cmd: >-
+      uv run python scripts/create_submission_ocr_v5_meta.py
+      --sample data/test/sample_submission.csv
+      --images data/test/test/images
+      --base submission_three_model_two_regime_tuned.csv
+      --cyr outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      --eslav outputs/test_eslav_v5_rec_predictions_b8.csv
+      --eng outputs/test_english_v5_rec_predictions_b8.csv
+      --output submission_ocr_v5_meta_yandex_selected_b8.csv
+    deps:
+      - scripts/create_submission_ocr_v5_meta.py
+      - data/train/rus_ocr_in_the_wild_dataset
+      - data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      - data/test/sample_submission.csv
+      - data/test/test/images
+      - outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      - outputs/yandex_real_long_v4_multicrop_raw.csv
+      - outputs/yandex_cyrillic_v5_rec_predictions.csv
+      - outputs/yandex_eslav_v5_rec_predictions.csv
+      - outputs/yandex_english_v5_rec_predictions.csv
+      - submission_three_model_two_regime_tuned.csv
+      - outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      - outputs/test_eslav_v5_rec_predictions_b8.csv
+      - outputs/test_english_v5_rec_predictions_b8.csv
+      - outputs/environment.json
+    outs:
+      - submission_ocr_v5_meta_yandex_selected_b8.csv:
+          cache: false
+      - submission_ocr_v5_meta_yandex_selected_b8.json:
+          cache: false
+
+  verify_submission:
+    cmd: uv run python scripts/verify_reproduction.py
+    deps:
+      - scripts/verify_reproduction.py
+      - data/train/rus_ocr_in_the_wild_dataset/source_manifest.json
+      - data/train/yandex_ocr_real_long_lines_v4
+      - outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      - outputs/yandex_real_long_v4_multicrop_raw.csv
+      - outputs/yandex_cyrillic_v5_rec_predictions.csv
+      - outputs/yandex_eslav_v5_rec_predictions.csv
+      - outputs/yandex_english_v5_rec_predictions.csv
+      - submission_three_model_two_regime_tuned.csv
+      - outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      - outputs/test_eslav_v5_rec_predictions_b8.csv
+      - outputs/test_english_v5_rec_predictions_b8.csv
+      - submission_ocr_v5_meta_yandex_selected_b8.csv
+    outs:
+      - outputs/reproduction_check.json:
+          cache: false

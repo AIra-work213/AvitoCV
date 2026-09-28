@@ -1,0 +1,485 @@
+schema: '2.0'
+stages:
+  check_environment:
+    cmd: uv run python scripts/check_environment.py
+    deps:
+    - path: pyproject.toml
+      hash: md5
+      md5: e1571b613b7035cf09fd96e223730d69
+      size: 463
+    - path: scripts/check_environment.py
+      hash: md5
+      md5: e07f9d0d93201368cb7081d26f408980
+      size: 3194
+      isexec: true
+    - path: uv.lock
+      hash: md5
+      md5: 4cfe495665efa4713099516576d0bd41
+      size: 648597
+    outs:
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+  download_yandex:
+    cmd: uv run python scripts/download_yandex_ocr_wild.py --output 
+      data/train/rus_ocr_in_the_wild_dataset
+    deps:
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/download_yandex_ocr_wild.py
+      hash: md5
+      md5: 34be5605db1df6c76e293d9049a77755
+      size: 4845
+    outs:
+    - path: data/train/rus_ocr_in_the_wild_dataset
+      hash: md5
+      md5: 0159c9007d74955868100870926b9350.dir
+      size: 466296618
+      nfiles: 595
+  prepare_yandex_validation:
+    cmd: uv run python scripts/prepare_yandex_ocr_real_lines_validation.py 
+      --source data/train/rus_ocr_in_the_wild_dataset --test-images 
+      data/test/test/images --output data/train/yandex_ocr_real_long_lines_v4 
+      --samples 553 --seed 20260926
+    deps:
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: data/train/rus_ocr_in_the_wild_dataset
+      hash: md5
+      md5: 0159c9007d74955868100870926b9350.dir
+      size: 466296618
+      nfiles: 595
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/prepare_yandex_ocr_real_lines_validation.py
+      hash: md5
+      md5: 58bfe391661a0ab812cf9de6dc053828
+      size: 10244
+    - path: scripts/prepare_yandex_ocr_realistic_validation.py
+      hash: md5
+      md5: 41334e69c6d241a1fa3dcf3f4e8548fa
+      size: 12785
+    params:
+      params.yaml:
+        seed.yandex_validation: 20260926
+        yandex_validation.samples: 553
+    outs:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+  yandex_base_ensemble:
+    cmd: uv run python scripts/evaluate_three_model_orientation.py --labels 
+      data/train/yandex_ocr_real_long_lines_v4/labels.csv --output 
+      outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv --batch-size 32
+    deps:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/evaluate_three_model_orientation.py
+      hash: md5
+      md5: 2072a994c421061800e640b4cc52714b
+      size: 7404
+    params:
+      params.yaml:
+        batch_size.yandex_orientation: 32
+    outs:
+    - path: outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      hash: md5
+      md5: a838070e36b83037290552e14a5d921d
+      size: 66246
+  yandex_multicrop:
+    cmd: uv run python scripts/create_yandex_multicrop_cache.py --labels 
+      data/train/yandex_ocr_real_long_lines_v4/labels.csv --baseline 
+      outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv --output 
+      outputs/yandex_real_long_v4_multicrop_raw.csv --threshold-ratio 10 
+      --batch-size 32
+    deps:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      hash: md5
+      md5: a838070e36b83037290552e14a5d921d
+      size: 66246
+    - path: scripts/create_yandex_multicrop_cache.py
+      hash: md5
+      md5: 32ea05e84d524c891820f8fed29a9998
+      size: 6182
+    params:
+      params.yaml:
+        batch_size.yandex_multicrop: 32
+        yandex_validation.multicrop_ratio: 10
+    outs:
+    - path: outputs/yandex_real_long_v4_multicrop_raw.csv
+      hash: md5
+      md5: 3f187b9f242ddc0f92095aa9032c53e1
+      size: 45732
+  yandex_ocr_cyrillic:
+    cmd: uv run python scripts/evaluate_cyrillic_rec_orientation.py --labels 
+      data/train/yandex_ocr_real_long_lines_v4/labels.csv --model-name 
+      cyrillic_PP-OCRv5_mobile_rec --output 
+      outputs/yandex_cyrillic_v5_rec_predictions.csv --batch-size 32
+    deps:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/evaluate_cyrillic_rec_orientation.py
+      hash: md5
+      md5: 0b71a1ce6a71ed013069706531e04d0e
+      size: 5199
+    params:
+      params.yaml:
+        batch_size.yandex_ocr: 32
+    outs:
+    - path: outputs/yandex_cyrillic_v5_rec_predictions.csv
+      hash: md5
+      md5: ade2910703892c3e64c8a3426ef4cf1c
+      size: 92467
+  yandex_ocr_eslav:
+    cmd: uv run python scripts/evaluate_cyrillic_rec_orientation.py --labels 
+      data/train/yandex_ocr_real_long_lines_v4/labels.csv --model-name 
+      eslav_PP-OCRv5_mobile_rec --output 
+      outputs/yandex_eslav_v5_rec_predictions.csv --batch-size 32
+    deps:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/evaluate_cyrillic_rec_orientation.py
+      hash: md5
+      md5: 0b71a1ce6a71ed013069706531e04d0e
+      size: 5199
+    params:
+      params.yaml:
+        batch_size.yandex_ocr: 32
+    outs:
+    - path: outputs/yandex_eslav_v5_rec_predictions.csv
+      hash: md5
+      md5: 6a6d0b1d3338cdbe58fb9bd18c7491e8
+      size: 91820
+  yandex_ocr_english:
+    cmd: uv run python scripts/evaluate_cyrillic_rec_orientation.py --labels 
+      data/train/yandex_ocr_real_long_lines_v4/labels.csv --model-name 
+      en_PP-OCRv5_mobile_rec --output 
+      outputs/yandex_english_v5_rec_predictions.csv --batch-size 32
+    deps:
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/evaluate_cyrillic_rec_orientation.py
+      hash: md5
+      md5: 0b71a1ce6a71ed013069706531e04d0e
+      size: 5199
+    params:
+      params.yaml:
+        batch_size.yandex_ocr: 32
+    outs:
+    - path: outputs/yandex_english_v5_rec_predictions.csv
+      hash: md5
+      md5: 03ef6e85cfbdf8e0ecb250d2195b6d5b
+      size: 86427
+  test_base_ensemble:
+    cmd: uv run python scripts/create_three_model_two_regime_submission.py 
+      --sample-submission data/test/sample_submission.csv --images 
+      data/test/test/images --output submission_three_model_two_regime_tuned.csv
+      --batch-size 32
+    deps:
+    - path: data/test/sample_submission.csv
+      hash: md5
+      md5: 73575f356f78731f6bcabaad6a5651a2
+      size: 300015
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/create_three_model_two_regime_submission.py
+      hash: md5
+      md5: 43cc811ef4b902e84acee21552027dc2
+      size: 15303
+    params:
+      params.yaml:
+        batch_size.test_orientation: 32
+    outs:
+    - path: submission_three_model_two_regime_tuned.csv
+      hash: md5
+      md5: 6e0494eda7de37400dfa4b388b00188e
+      size: 480015
+  test_ocr_cyrillic:
+    cmd: uv run python scripts/cache_test_recognizer_orientation.py --model-name
+      cyrillic_PP-OCRv5_mobile_rec --images data/test/test/images --sample 
+      data/test/sample_submission.csv --output 
+      outputs/test_cyrillic_v5_rec_predictions_b8.csv --batch-size 8
+    deps:
+    - path: data/test/sample_submission.csv
+      hash: md5
+      md5: 73575f356f78731f6bcabaad6a5651a2
+      size: 300015
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/cache_test_recognizer_orientation.py
+      hash: md5
+      md5: 5e3f942685b959e878f6b8f1c551d491
+      size: 3438
+    params:
+      params.yaml:
+        batch_size.test_ocr: 8
+    outs:
+    - path: outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 51ed0666402714b875c1944c68fb2961
+      size: 1846936
+  test_ocr_eslav:
+    cmd: uv run python scripts/cache_test_recognizer_orientation.py --model-name
+      eslav_PP-OCRv5_mobile_rec --images data/test/test/images --sample 
+      data/test/sample_submission.csv --output 
+      outputs/test_eslav_v5_rec_predictions_b8.csv --batch-size 8
+    deps:
+    - path: data/test/sample_submission.csv
+      hash: md5
+      md5: 73575f356f78731f6bcabaad6a5651a2
+      size: 300015
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/cache_test_recognizer_orientation.py
+      hash: md5
+      md5: 5e3f942685b959e878f6b8f1c551d491
+      size: 3438
+    params:
+      params.yaml:
+        batch_size.test_ocr: 8
+    outs:
+    - path: outputs/test_eslav_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: d335a2543fd2f40022f6135a3c4bd474
+      size: 1820818
+  test_ocr_english:
+    cmd: uv run python scripts/cache_test_recognizer_orientation.py --model-name
+      en_PP-OCRv5_mobile_rec --images data/test/test/images --sample 
+      data/test/sample_submission.csv --output 
+      outputs/test_english_v5_rec_predictions_b8.csv --batch-size 8
+    deps:
+    - path: data/test/sample_submission.csv
+      hash: md5
+      md5: 73575f356f78731f6bcabaad6a5651a2
+      size: 300015
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: scripts/cache_test_recognizer_orientation.py
+      hash: md5
+      md5: 5e3f942685b959e878f6b8f1c551d491
+      size: 3438
+    params:
+      params.yaml:
+        batch_size.test_ocr: 8
+    outs:
+    - path: outputs/test_english_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 9090d3812096d55d60f0abfbd4995bc8
+      size: 1826864
+  final_submission:
+    cmd: uv run python scripts/create_submission_ocr_v5_meta.py --sample 
+      data/test/sample_submission.csv --images data/test/test/images --base 
+      submission_three_model_two_regime_tuned.csv --cyr 
+      outputs/test_cyrillic_v5_rec_predictions_b8.csv --eslav 
+      outputs/test_eslav_v5_rec_predictions_b8.csv --eng 
+      outputs/test_english_v5_rec_predictions_b8.csv --output 
+      submission_ocr_v5_meta_yandex_selected_b8.csv
+    deps:
+    - path: data/test/sample_submission.csv
+      hash: md5
+      md5: 73575f356f78731f6bcabaad6a5651a2
+      size: 300015
+    - path: data/test/test/images
+      hash: md5
+      md5: d4ee7eae292f47ac3eb2a517217b335c.dir
+      size: 678570926
+      nfiles: 20000
+    - path: data/train/rus_ocr_in_the_wild_dataset
+      hash: md5
+      md5: 0159c9007d74955868100870926b9350.dir
+      size: 466296618
+      nfiles: 595
+    - path: data/train/yandex_ocr_real_long_lines_v4/labels.csv
+      hash: md5
+      md5: 660a8cde496f87cc5a37c884b8916d7c
+      size: 135880
+    - path: outputs/environment.json
+      hash: md5
+      md5: dda49947887c1a61f827664e5fa3733c
+      size: 130
+    - path: outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 51ed0666402714b875c1944c68fb2961
+      size: 1846936
+    - path: outputs/test_english_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 9090d3812096d55d60f0abfbd4995bc8
+      size: 1826864
+    - path: outputs/test_eslav_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: d335a2543fd2f40022f6135a3c4bd474
+      size: 1820818
+    - path: outputs/yandex_cyrillic_v5_rec_predictions.csv
+      hash: md5
+      md5: ade2910703892c3e64c8a3426ef4cf1c
+      size: 92467
+    - path: outputs/yandex_english_v5_rec_predictions.csv
+      hash: md5
+      md5: 03ef6e85cfbdf8e0ecb250d2195b6d5b
+      size: 86427
+    - path: outputs/yandex_eslav_v5_rec_predictions.csv
+      hash: md5
+      md5: 6a6d0b1d3338cdbe58fb9bd18c7491e8
+      size: 91820
+    - path: outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      hash: md5
+      md5: a838070e36b83037290552e14a5d921d
+      size: 66246
+    - path: outputs/yandex_real_long_v4_multicrop_raw.csv
+      hash: md5
+      md5: 3f187b9f242ddc0f92095aa9032c53e1
+      size: 45732
+    - path: scripts/create_submission_ocr_v5_meta.py
+      hash: md5
+      md5: 3e1c37f1dac4f659113413d42fa2314a
+      size: 11883
+    - path: submission_three_model_two_regime_tuned.csv
+      hash: md5
+      md5: 6e0494eda7de37400dfa4b388b00188e
+      size: 480015
+    outs:
+    - path: submission_ocr_v5_meta_yandex_selected_b8.csv
+      hash: md5
+      md5: a4c9924dcf9f8495740cb5d18b814d8a
+      size: 480015
+    - path: submission_ocr_v5_meta_yandex_selected_b8.json
+      hash: md5
+      md5: 376de1a333ade95543175a3735ce4eb6
+      size: 395
+  verify_submission:
+    cmd: uv run python scripts/verify_reproduction.py
+    deps:
+    - path: data/train/rus_ocr_in_the_wild_dataset/source_manifest.json
+      hash: md5
+      md5: 7c90c586b5bcd2f0f2328042be55eba1
+      size: 77575
+    - path: data/train/yandex_ocr_real_long_lines_v4
+      hash: md5
+      md5: 4194fc26cab48fd91013619287c99da3.dir
+      size: 19937801
+      nfiles: 556
+    - path: outputs/test_cyrillic_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 51ed0666402714b875c1944c68fb2961
+      size: 1846936
+    - path: outputs/test_english_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: 9090d3812096d55d60f0abfbd4995bc8
+      size: 1826864
+    - path: outputs/test_eslav_v5_rec_predictions_b8.csv
+      hash: md5
+      md5: d335a2543fd2f40022f6135a3c4bd474
+      size: 1820818
+    - path: outputs/yandex_cyrillic_v5_rec_predictions.csv
+      hash: md5
+      md5: ade2910703892c3e64c8a3426ef4cf1c
+      size: 92467
+    - path: outputs/yandex_english_v5_rec_predictions.csv
+      hash: md5
+      md5: 03ef6e85cfbdf8e0ecb250d2195b6d5b
+      size: 86427
+    - path: outputs/yandex_eslav_v5_rec_predictions.csv
+      hash: md5
+      md5: 6a6d0b1d3338cdbe58fb9bd18c7491e8
+      size: 91820
+    - path: outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
+      hash: md5
+      md5: a838070e36b83037290552e14a5d921d
+      size: 66246
+    - path: outputs/yandex_real_long_v4_multicrop_raw.csv
+      hash: md5
+      md5: 3f187b9f242ddc0f92095aa9032c53e1
+      size: 45732
+    - path: scripts/verify_reproduction.py
+      hash: md5
+      md5: f0ed4a34da329e9875ef2afa2bb267a6
+      size: 5658
+      isexec: true
+    - path: submission_ocr_v5_meta_yandex_selected_b8.csv
+      hash: md5
+      md5: a4c9924dcf9f8495740cb5d18b814d8a
+      size: 480015
+    - path: submission_three_model_two_regime_tuned.csv
+      hash: md5
+      md5: 6e0494eda7de37400dfa4b388b00188e
+      size: 480015
+    outs:
+    - path: outputs/reproduction_check.json
+      hash: md5
+      md5: 301f62fa9c97d8a9c2f5fad179578cc0
+      size: 1903

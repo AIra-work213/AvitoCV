@@ -1,0 +1,34 @@
+{
+  "samples": 553,
+  "x025_flip_tta": {
+    "one_minus_brier": 0.8802838846953454,
+    "brier_score": 0.11971611530465467,
+    "accuracy": 0.833634719710669,
+    "errors": 92
+  },
+  "x1_flip_tta": {
+    "one_minus_brier": 0.8641526218087504,
+    "brier_score": 0.13584737819124956,
+    "accuracy": 0.8716094032549728,
+    "errors": 71
+  },
+  "x1_flip_tta_t005": {
+    "one_minus_brier": 0.886135237544826,
+    "brier_score": 0.11386476245517392,
+    "accuracy": 0.8716094032549728,
+    "errors": 71
+  },
+  "rapid": {
+    "one_minus_brier": 0.8961383882652652,
+    "brier_score": 0.10386161173473482,
+    "accuracy": 0.8571428571428571,
+    "errors": 79
+  },
+  "ensemble": {
+    "one_minus_brier": 0.9016776507100882,
+    "brier_score": 0.09832234928991176,
+    "accuracy": 0.8698010849909584,
+    "errors": 72
+  },
+  "elapsed_seconds": 8.983208923000007
+}
