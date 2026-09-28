@@ -49,6 +49,11 @@ data/test/
 uv run python scripts/create_submission_ocr_v5_meta.py
 ```
 
+Для этого быстрого шага `data/test` не требуется. Порядок и формат `image_id`
+берутся из `submission_three_model_two_regime_tuned.csv`, а все модельные
+признаки — из сохранённых OCR-кешей. Конкурсные изображения нужны только для
+полного пересчёта предсказаний через `dvc repro`.
+
 Скрипт обучит финальную логистическую регрессию на Yandex-валидации и создаст:
 
 ```text
@@ -221,4 +226,3 @@ Yandex-валидации и объединяет базовую вероятн�
 | [`scripts/cache_test_recognizer_orientation.py`](scripts/cache_test_recognizer_orientation.py) | Расчёт признаков OCR на тесте |
 | [`scripts/create_submission_ocr_v5_meta.py`](scripts/create_submission_ocr_v5_meta.py) | Обучение метамодели и финальный сабмит |
 | [`scripts/verify_reproduction.py`](scripts/verify_reproduction.py) | Проверка формата и SHA-256 |
-

@@ -207,8 +207,6 @@ stages:
   final_submission:
     cmd: >-
       uv run python scripts/create_submission_ocr_v5_meta.py
-      --sample data/test/sample_submission.csv
-      --images data/test/test/images
       --base submission_three_model_two_regime_tuned.csv
       --cyr outputs/test_cyrillic_v5_rec_predictions_b8.csv
       --eslav outputs/test_eslav_v5_rec_predictions_b8.csv
@@ -216,10 +214,7 @@ stages:
       --output submission_ocr_v5_meta_yandex_selected_b8.csv
     deps:
       - scripts/create_submission_ocr_v5_meta.py
-      - data/train/rus_ocr_in_the_wild_dataset
-      - data/train/yandex_ocr_real_long_lines_v4/labels.csv
-      - data/test/sample_submission.csv
-      - data/test/test/images
+      - assets/char_lm_v5.json
       - outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv
       - outputs/yandex_real_long_v4_multicrop_raw.csv
       - outputs/yandex_cyrillic_v5_rec_predictions.csv

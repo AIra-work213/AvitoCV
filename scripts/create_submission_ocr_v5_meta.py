@@ -12,7 +12,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -32,12 +31,12 @@ OCR_COLUMNS = [
     "rec_text_direct",
     "rec_text_rotated",
 ]
-YANDEX_LABELS = Path("data/train/yandex_ocr_real_long_lines_v4/labels.csv")
 YANDEX_BASE = Path("outputs/yandex_ocr_three_model_eval_real_long_lines_v4.csv")
 YANDEX_MULTICROP = Path("outputs/yandex_real_long_v4_multicrop_raw.csv")
 YANDEX_CYRILLIC = Path("outputs/yandex_cyrillic_v5_rec_predictions.csv")
 YANDEX_ESLAV = Path("outputs/yandex_eslav_v5_rec_predictions.csv")
 YANDEX_ENGLISH = Path("outputs/yandex_english_v5_rec_predictions.csv")
+CHAR_LM_STATS = Path("assets/char_lm_v5.json")
 
 
 def normalize(text: object) -> str:
@@ -83,17 +82,19 @@ class CharLM:
         ]
         return float(np.mean(scores))
 
-
-def corpus() -> list[str]:
-    """Читает пригодные транскрипции из скачанного OCR-датасета Яндекса."""
-    texts: list[str] = []
-    source = Path("data/train/rus_ocr_in_the_wild_dataset")
-    for path in source.glob("gt_img_*.txt"):
-        for line in path.read_text(encoding="utf-8-sig").splitlines():
-            parts = line.split(",", 8)
-            if len(parts) == 9 and parts[8].strip() != "###":
-                texts.append(parts[8].strip())
-    return texts
+    @classmethod
+    def from_json(cls, path: Path) -> "CharLM":
+        """Восстанавливает зафиксированную символьную модель из JSON."""
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        model = cls([], alpha=float(payload["alpha"]))
+        model.vocabulary = int(payload["vocabulary"])
+        model.context = Counter(
+            {key: int(value) for key, value in payload["context"].items()}
+        )
+        model.ngram = Counter(
+            {key: int(value) for key, value in payload["ngram"].items()}
+        )
+        return model
 
 
 def apply_temp(probabilities: np.ndarray, temperature: float) -> np.ndarray:
@@ -169,7 +170,6 @@ def features(frame: pd.DataFrame, language_model: CharLM) -> np.ndarray:
 
 def yandex_frame() -> pd.DataFrame:
     """Собирает обучающую таблицу метамодели из зафиксированных кешей Яндекса."""
-    labels = pd.read_csv(YANDEX_LABELS).set_index("image_id")
     base = pd.read_csv(YANDEX_BASE).set_index("image_id")
     multicrop = pd.read_csv(YANDEX_MULTICROP).set_index("image_id")
 
@@ -179,10 +179,8 @@ def yandex_frame() -> pd.DataFrame:
         + 0.25 * base.p_rapid.to_numpy(),
         0.5,
     )
-    wide_mask = labels.output_ratio.to_numpy(float) >= 10
-
-    for location, image_id in zip(np.flatnonzero(wide_mask), labels.index[wide_mask]):
-        row = multicrop.loc[image_id]
+    for image_id, row in multicrop.iterrows():
+        location = base.index.get_loc(image_id)
         windows = [
             0.05 * row[f"x025_{position}"]
             + 0.65 * apply_temp(np.asarray([row[f"x1_{position}"]]), 0.02)[0]
@@ -193,9 +191,9 @@ def yandex_frame() -> pd.DataFrame:
 
     return pd.DataFrame(
         {
-            "image_id": labels.index,
-            "target": labels.target,
-            "ratio": labels.output_ratio,
+            "image_id": base.index,
+            "target": base.target,
+            "ratio": np.ones(len(base), dtype=float),
             "p_current": probability,
         }
     ).reset_index(drop=True)
@@ -204,16 +202,6 @@ def yandex_frame() -> pd.DataFrame:
 def parse_args() -> argparse.Namespace:
     """Читает пути и параметры для сборки финального сабмита."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--sample",
-        type=Path,
-        default=Path("data/test/sample_submission.csv"),
-    )
-    parser.add_argument(
-        "--images",
-        type=Path,
-        default=Path("data/test/test/images"),
-    )
     parser.add_argument(
         "--base",
         type=Path,
@@ -242,23 +230,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def test_frame(args: argparse.Namespace, image_ids: list[str]) -> pd.DataFrame:
-    """Собирает метаданные теста, сохраняя порядок строк sample submission."""
-    base = pd.read_csv(args.base)
-    if base.image_id.tolist() != image_ids:
-        raise ValueError("Base predictions do not match sample order")
-
-    ratios: list[float] = []
-    for image_id in image_ids:
-        image = cv2.imread(str(args.images / f"{image_id}.png"))
-        if image is None:
-            raise RuntimeError(f"Cannot read {image_id}")
-        ratios.append(image.shape[1] / image.shape[0])
-
+def test_frame(base_path: Path) -> pd.DataFrame:
+    """Собирает тестовую таблицу из базового сабмита без чтения изображений."""
+    base = pd.read_csv(base_path)
+    if base.columns.tolist() != ["image_id", "p_180"]:
+        raise ValueError("Base submission must contain image_id and p_180")
+    image_ids = base.image_id.tolist()
+    if len(image_ids) != 20_000 or len(set(image_ids)) != 20_000:
+        raise ValueError("Expected 20,000 unique IDs in the base submission")
     return pd.DataFrame(
         {
             "image_id": image_ids,
-            "ratio": ratios,
+            "ratio": np.ones(len(base), dtype=float),
             "p_current": base.p_180,
         }
     )
@@ -269,11 +252,10 @@ def main() -> None:
     args = parse_args()
     random.seed(SEED)
     np.random.seed(SEED)
-    image_ids = pd.read_csv(args.sample).image_id.tolist()
-    if len(image_ids) != 20000 or len(set(image_ids)) != 20000:
-        raise ValueError("Expected 20,000 unique IDs")
+    base_test = test_frame(args.base)
+    image_ids = base_test.image_id.tolist()
 
-    language_model = CharLM(corpus())
+    language_model = CharLM.from_json(CHAR_LM_STATS)
     train = add_ocr(
         yandex_frame(),
         YANDEX_CYRILLIC,
@@ -281,7 +263,7 @@ def main() -> None:
         YANDEX_ENGLISH,
     )
     test = add_ocr(
-        test_frame(args, image_ids),
+        base_test,
         args.cyr,
         args.eslav,
         args.eng,
